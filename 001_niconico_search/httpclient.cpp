@@ -2,7 +2,7 @@
 
 void HttpClient::sendRequest(Methods method, QNetworkRequest req, QByteArray *data)
 {
-    connect(m_Manager, SIGNAL(finished(QNetworkReply*)), this, SLOT(onReplyFinished(QNetworkReply*)));
+    connect(m_Manager, &QNetworkAccessManager::finished, this, &HttpClient::onReplyFinished);
 
     req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
     req.setHeader(QNetworkRequest::KnownHeaders::UserAgentHeader, "dummy");
