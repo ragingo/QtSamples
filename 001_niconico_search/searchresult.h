@@ -15,11 +15,13 @@ struct SearchResult
         QString contentId;
         QString title;
         int viewCounter = 0;
+        QString thumbnailUrl;
 
-        Item(QString contentId, QString title, int viewCounter)
+        Item(QString contentId, QString title, int viewCounter, QString thumbnailUrl)
             : contentId(contentId)
             , title(title)
             , viewCounter(viewCounter)
+            , thumbnailUrl(thumbnailUrl)
         {}
     };
 

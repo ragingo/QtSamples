@@ -8,14 +8,14 @@
 
 namespace {
 
+    // API仕様: https://site.nicovideo.jp/search-api-docs/search.html
     constexpr auto SearchApiUrl = QStringViewLiteral("https://api.search.nicovideo.jp/api/v2/video/contents/search");
-    constexpr auto ThumbnailUrl = QStringViewLiteral("https://tn.smilevideo.jp/smile?i=");
 
     QUrlQuery buildSearchParams(QString keyword) {
         QUrlQuery params;
         params.addQueryItem("q", keyword);
         params.addQueryItem("targets", "title");
-        params.addQueryItem("fields", "contentId,title,viewCounter");
+        params.addQueryItem("fields", "contentId,title,viewCounter,thumbnailUrl");
         params.addQueryItem("_sort", "-viewCounter");
         params.addQueryItem("_offset", "0");
         params.addQueryItem("_limit", "10");
@@ -41,16 +41,15 @@ namespace {
         auto data = root["data"];
 
         foreach(const auto& item, data.toArray()) {
-            result.data.items.emplace_back(item["contentId"].toString(), item["title"].toString(), item["viewCounter"].toInt());
+            result.data.items.emplace_back(
+                item["contentId"].toString(),
+                item["title"].toString(),
+                item["viewCounter"].toInt(),
+                item["thumbnailUrl"].toString()
+            );
         }
 
         return result;
-    }
-
-    QString getIconUrl(QStringRef contentId) {
-        Q_ASSERT(!contentId.isEmpty());
-        Q_ASSERT(contentId.length() > 3);
-        return ThumbnailUrl.toString() + contentId.right(contentId.length() - 2);
     }
 
     QIcon convertToQIcon(QByteArray data) {
@@ -129,9 +128,8 @@ void MainWindow::onVideoListRowInserted(const QModelIndex &parent, int first, in
 
     auto dataItem = m_SearchResult.data.items[static_cast<size_t>(first)];
     auto listItem = ui->listVideos->item(first);
-    auto iconUrl = getIconUrl(&dataItem.contentId);
 
-    QNetworkRequest req(iconUrl);
+    QNetworkRequest req(dataItem.thumbnailUrl);
     auto client = new HttpClient(this);
     client->setReplyFinishedCallback([listItem](QNetworkReply* reply){
         if (reply->error() != QNetworkReply::NoError) {
