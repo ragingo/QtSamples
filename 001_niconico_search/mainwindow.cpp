@@ -57,6 +57,8 @@ namespace {
         img.loadFromData(data);
         return QIcon(QPixmap::fromImage(img));
     }
+
+    QMutex g_Mutex;
 }
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -113,6 +115,7 @@ void MainWindow::onSearchButtonClicked()
 
         foreach(const auto& item, m_SearchResult.data.items) {
             auto listItem = new QListWidgetItem(item.title);
+            listItem->setSizeHint(QSize(ui->listVideos->width(), 130));
             ui->listVideos->addItem(listItem);
         }
     });
@@ -129,19 +132,32 @@ void MainWindow::onVideoListRowInserted(const QModelIndex &parent, int first, in
     auto dataItem = m_SearchResult.data.items[static_cast<size_t>(first)];
     auto listItem = ui->listVideos->item(first);
 
+    // よくわかってないけど、QThread つかってみた
+    // アプリ終了時に必ず変なシグナル受信する
+    // （OSから Unknown signal を受信）
+
+    QThread *thread(new QThread(this));
+    thread->start();
+
     QNetworkRequest req(dataItem.thumbnailUrl);
-    auto client = new HttpClient(this);
+    auto client = new HttpClient(nullptr);
+
+    client->moveToThread(thread);
+    connect(thread, &QThread::finished, client, &HttpClient::deleteLater);
+
     client->setReplyFinishedCallback([listItem](QNetworkReply* reply){
         if (reply->error() != QNetworkReply::NoError) {
             return;
         }
 
+        QMutexLocker lock(&g_Mutex);
         if (listItem) {
             auto body = reply->readAll();
             auto icon = convertToQIcon(std::move(body));
             listItem->setIcon(icon);
         }
     });
+
     client->sendRequest(HttpClient::Methods::kGet, req);
 }
 
