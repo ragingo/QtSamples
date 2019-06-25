@@ -1,14 +1,15 @@
-#include "mainwindow.h"
-#include "ui_mainwindow.h"
-#include "httpclient.h"
 #include <functional>
 #include <QString>
 #include <QtNetwork>
 #include <QJsonDocument>
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include "httpclient.h"
 
 namespace {
 
     constexpr auto SearchApiUrl = QStringViewLiteral("https://api.search.nicovideo.jp/api/v2/video/contents/search");
+    constexpr auto ThumbnailUrl = QStringViewLiteral("https://tn.smilevideo.jp/smile?i=");
 
     QUrlQuery buildSearchParams(QString keyword) {
         QUrlQuery params;
@@ -34,7 +35,7 @@ namespace {
         result.meta.totalCount = metaObj["totalCount"].toInt();
 
         if (result.meta.totalCount == 0) {
-            return std::move(result);
+            return result;
         }
 
         auto data = root["data"];
@@ -43,19 +44,19 @@ namespace {
             result.data.items.emplace_back(item["contentId"].toString(), item["title"].toString(), item["viewCounter"].toInt());
         }
 
-        return std::move(result);
+        return result;
     }
 
     QString getIconUrl(QStringRef contentId) {
         Q_ASSERT(!contentId.isEmpty());
         Q_ASSERT(contentId.length() > 3);
-        return "https://tn.smilevideo.jp/smile?i=" + contentId.right(contentId.length() - 2);
+        return ThumbnailUrl.toString() + contentId.right(contentId.length() - 2);
     }
 
-    QIcon convertToQIcon(const QByteArray& data) {
+    QIcon convertToQIcon(QByteArray data) {
         QImage img;
         img.loadFromData(data);
-        return std::move(QIcon(QPixmap::fromImage(img)));
+        return QIcon(QPixmap::fromImage(img));
     }
 }
 
@@ -65,7 +66,11 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    connect(ui->listVideos->model(), &QAbstractItemModel::rowsInserted, this, &MainWindow::onListRowsInserted);
+    // https://blog.qt.io/jp/2011/03/23/go-to-slot-2/
+    // 命名規則に従わない。スロットへの接続は自分でやる。
+    connect(ui->btnSearch, &QPushButton::clicked, this, &MainWindow::onSearchButtonClicked);
+    connect(ui->listVideos->model(), &QAbstractItemModel::rowsInserted, this, &MainWindow::onVideoListRowInserted);
+    connect(ui->listVideos, &QListWidget::currentRowChanged, this, &MainWindow::onVideoListCurrentRowChanged);
 
     m_HttpClient = new HttpClient(this);
 }
@@ -76,7 +81,7 @@ MainWindow::~MainWindow()
 }
 
 // 検索ボタンクリック
-void MainWindow::on_btnSearch_clicked()
+void MainWindow::onSearchButtonClicked()
 {
     auto keyword = ui->txtKeyword->text();
 
@@ -100,9 +105,15 @@ void MainWindow::on_btnSearch_clicked()
         auto body = reply->readAll();
         m_SearchResult = parseSearchResponse(std::move(body));
 
+        auto counterText =
+            QString("%1/%2").arg(
+                QLocale().toString(m_SearchResult.data.items.size()),
+                QLocale().toString(m_SearchResult.meta.totalCount)
+            );
+        ui->labelCounter->setText(counterText);
+
         foreach(const auto& item, m_SearchResult.data.items) {
             auto listItem = new QListWidgetItem(item.title);
-            ui->listVideos->model()->setProperty("contentId", item.contentId);
             ui->listVideos->addItem(listItem);
         }
     });
@@ -110,7 +121,8 @@ void MainWindow::on_btnSearch_clicked()
     m_HttpClient->sendRequest(HttpClient::Methods::kGet, req);
 }
 
-void MainWindow::onListRowsInserted(const QModelIndex &parent, int first, int last)
+// 動画リストの行追加時
+void MainWindow::onVideoListRowInserted(const QModelIndex &parent, int first, int last)
 {
     Q_UNUSED(parent);
     Q_UNUSED(last);
@@ -127,9 +139,16 @@ void MainWindow::onListRowsInserted(const QModelIndex &parent, int first, int la
         }
 
         if (listItem) {
-            auto icon = convertToQIcon(reply->readAll());
+            auto body = reply->readAll();
+            auto icon = convertToQIcon(std::move(body));
             listItem->setIcon(icon);
         }
     });
     client->sendRequest(HttpClient::Methods::kGet, req);
+}
+
+// 動画リストの現在行変更時
+void MainWindow::onVideoListCurrentRowChanged(int rowIndex)
+{
+    qDebug() << "current row index: " << rowIndex;
 }

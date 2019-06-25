@@ -2,14 +2,13 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include "httpclient.h"
 #include "searchresult.h"
 
 namespace Ui {
-class MainWindow;
+    class MainWindow;
 }
 
-class QNetworkReply;
+class HttpClient;
 
 class MainWindow : public QMainWindow
 {
@@ -20,11 +19,12 @@ public:
     ~MainWindow();
 
 private slots:
-    void on_btnSearch_clicked();
-    void onListRowsInserted(const QModelIndex &parent, int first, int last);
+    void onSearchButtonClicked();
+    void onVideoListRowInserted(const QModelIndex &parent, int first, int last);
+    void onVideoListCurrentRowChanged(int rowIndex);
 
 private:
-    Ui::MainWindow *ui;
+    Ui::MainWindow *ui = nullptr;
     HttpClient *m_HttpClient = nullptr;
     SearchResult m_SearchResult = {};
 };
