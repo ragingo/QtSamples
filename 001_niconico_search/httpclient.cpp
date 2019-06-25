@@ -1,8 +1,9 @@
 #include "httpclient.h"
+#include <qdebug.h>
 
 void HttpClient::sendRequest(Methods method, QNetworkRequest req, QByteArray *data)
 {
-    connect(m_Manager, &QNetworkAccessManager::finished, this, &HttpClient::onReplyFinished);
+    qDebug() << "[HttpClient] sendRequest: " << req.url().toString() << endl;
 
     req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
     req.setHeader(QNetworkRequest::KnownHeaders::UserAgentHeader, "dummy");
@@ -19,8 +20,14 @@ void HttpClient::sendRequest(Methods method, QNetworkRequest req, QByteArray *da
 
 void HttpClient::onReplyFinished(QNetworkReply* reply)
 {
-    Q_ASSERT(reply);
-    if (m_onReplyFinished) {
+    qDebug() << "[HttpClient] onReplyFinished: " << reply << endl;
+
+    if (reply && m_onReplyFinished) {
         m_onReplyFinished(reply);
+
+        reply->deleteLater();
+        reply = nullptr;
+
+        m_onReplyFinished = nullptr;
     }
 }

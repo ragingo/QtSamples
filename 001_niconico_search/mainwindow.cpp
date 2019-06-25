@@ -21,6 +21,42 @@ namespace {
         params.addQueryItem("_context", "apiguide");
         return params;
     }
+
+    SearchResult parseSearchResponse(QByteArray response) {
+        SearchResult result = {};
+
+        auto json = QJsonDocument::fromJson(response);
+        auto root = json.object();
+        auto meta = root["meta"];
+        auto metaObj = meta.toObject();
+
+        result.meta.status = metaObj["status"].toInt();
+        result.meta.totalCount = metaObj["totalCount"].toInt();
+
+        if (result.meta.totalCount == 0) {
+            return std::move(result);
+        }
+
+        auto data = root["data"];
+
+        foreach(const auto& item, data.toArray()) {
+            result.data.items.emplace_back(item["contentId"].toString(), item["title"].toString(), item["viewCounter"].toInt());
+        }
+
+        return std::move(result);
+    }
+
+    QString getIconUrl(QStringRef contentId) {
+        Q_ASSERT(!contentId.isEmpty());
+        Q_ASSERT(contentId.length() > 3);
+        return "https://tn.smilevideo.jp/smile?i=" + contentId.right(contentId.length() - 2);
+    }
+
+    QIcon convertToQIcon(const QByteArray& data) {
+        QImage img;
+        img.loadFromData(data);
+        return std::move(QIcon(QPixmap::fromImage(img)));
+    }
 }
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -28,6 +64,8 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+
+    connect(ui->listVideos->model(), &QAbstractItemModel::rowsInserted, this, &MainWindow::onListRowsInserted);
 
     m_HttpClient = new HttpClient(this);
 }
@@ -46,9 +84,7 @@ void MainWindow::on_btnSearch_clicked()
     url.setQuery(buildSearchParams(keyword));
 
     QNetworkRequest req(url);
-    req.setSslConfiguration(QSslConfiguration::defaultConfiguration());
     req.setHeader(QNetworkRequest::KnownHeaders::ContentTypeHeader, "application/json");
-    req.setHeader(QNetworkRequest::KnownHeaders::UserAgentHeader, "dummy");
 
     m_HttpClient->setReplyFinishedCallback([&](QNetworkReply *reply) {
         Q_ASSERT(reply);
@@ -58,64 +94,15 @@ void MainWindow::on_btnSearch_clicked()
             return;
         }
 
-        auto body = reply->readAll();
-        auto json = QJsonDocument::fromJson(body);
-        auto root = json.object();
-        auto meta = root["meta"];
-        auto metaObj = meta.toObject();
-
-        if (metaObj["status"].toInt() != 200) {
-            qDebug() << "invalid status";
-            qDebug() << root;
-            return;
-        }
-
-        int totalCount = metaObj["totalCount"].toInt();
-        if (totalCount == 0) {
-            qDebug() << "data is empty (.meta)";
-            qDebug() << root;
-            return;
-        }
-
-        auto data = root["data"];
-        auto dataArray = data.toArray();
-
-        if (dataArray.isEmpty()) {
-            qDebug() << "data is empty (.data)";
-            qDebug() << root;
-            return;
-        }
-
         ui->listVideos->clear();
         ui->listVideos->setIconSize(QSize(130, 100));
 
-        foreach(auto item, dataArray) {
-            if (!item.isObject()) {
-                continue;
-            }
-            auto itemObj = item.toObject();
-            auto contentId = itemObj["contentId"].toString();
-            auto title = itemObj["title"].toString();
-            auto listItem = new QListWidgetItem(title);
-            auto iconUrl = "https://tn.smilevideo.jp/smile?i=" + contentId.right(contentId.length() - 2);
+        auto body = reply->readAll();
+        m_SearchResult = parseSearchResponse(std::move(body));
 
-            auto client = new HttpClient(this);
-            client->setReplyFinishedCallback([listItem](QNetworkReply* reply2){
-                if (reply2->error() != QNetworkReply::NoError) {
-                    return;
-                }
-                auto body2 = reply2->readAll();
-                QImage img;
-                img.loadFromData(body2);
-                if (listItem) {
-                    listItem->setIcon(QIcon(QPixmap::fromImage(img)));
-                }
-            });
-            QNetworkRequest req2(iconUrl);
-            req2.setSslConfiguration(QSslConfiguration::defaultConfiguration());
-            req2.setHeader(QNetworkRequest::KnownHeaders::UserAgentHeader, "dummy");
-            client->sendRequest(HttpClient::Methods::kGet, req2);
-
+        foreach(const auto& item, m_SearchResult.data.items) {
+            auto listItem = new QListWidgetItem(item.title);
+            ui->listVideos->model()->setProperty("contentId", item.contentId);
             ui->listVideos->addItem(listItem);
         }
     });
@@ -123,3 +110,26 @@ void MainWindow::on_btnSearch_clicked()
     m_HttpClient->sendRequest(HttpClient::Methods::kGet, req);
 }
 
+void MainWindow::onListRowsInserted(const QModelIndex &parent, int first, int last)
+{
+    Q_UNUSED(parent);
+    Q_UNUSED(last);
+
+    auto dataItem = m_SearchResult.data.items[static_cast<size_t>(first)];
+    auto listItem = ui->listVideos->item(first);
+    auto iconUrl = getIconUrl(&dataItem.contentId);
+
+    QNetworkRequest req(iconUrl);
+    auto client = new HttpClient(this);
+    client->setReplyFinishedCallback([listItem](QNetworkReply* reply){
+        if (reply->error() != QNetworkReply::NoError) {
+            return;
+        }
+
+        if (listItem) {
+            auto icon = convertToQIcon(reply->readAll());
+            listItem->setIcon(icon);
+        }
+    });
+    client->sendRequest(HttpClient::Methods::kGet, req);
+}

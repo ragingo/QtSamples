@@ -18,10 +18,13 @@ public:
 
     HttpClient(QObject *parent) : QObject (parent) {
         m_Manager = new QNetworkAccessManager(this);
+        connect(m_Manager, &QNetworkAccessManager::finished, this, &HttpClient::onReplyFinished);
     }
 
     virtual ~HttpClient() {
-        connect(m_Manager, &QNetworkAccessManager::finished, m_Manager, &QNetworkAccessManager::deleteLater);
+        m_onReplyFinished = nullptr;
+        delete m_Manager;
+        m_Manager = nullptr;
     }
 
     void setReplyFinishedCallback(ReplyFinishedDelegate delegate) {
@@ -34,6 +37,6 @@ private slots:
     void onReplyFinished(QNetworkReply* reply);
 
 private:
-    ReplyFinishedDelegate m_onReplyFinished;
+    ReplyFinishedDelegate m_onReplyFinished = nullptr;
     QNetworkAccessManager *m_Manager = nullptr;
 };

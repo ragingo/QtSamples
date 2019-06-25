@@ -31,7 +31,8 @@ SOURCES += \
 
 HEADERS += \
         httpclient.h \
-        mainwindow.h
+        mainwindow.h \
+        searchresult.h
 
 FORMS += \
         mainwindow.ui
