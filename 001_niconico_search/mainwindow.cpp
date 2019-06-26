@@ -18,7 +18,7 @@ namespace {
         params.addQueryItem("fields", "contentId,title,viewCounter,thumbnailUrl");
         params.addQueryItem("_sort", "-viewCounter");
         params.addQueryItem("_offset", "0");
-        params.addQueryItem("_limit", "10");
+        params.addQueryItem("_limit", "30");
         params.addQueryItem("_context", "apiguide");
         return params;
     }
@@ -72,6 +72,8 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->btnSearch, &QPushButton::clicked, this, &MainWindow::onSearchButtonClicked);
     connect(ui->listVideos->model(), &QAbstractItemModel::rowsInserted, this, &MainWindow::onVideoListRowInserted);
     connect(ui->listVideos, &QListWidget::currentRowChanged, this, &MainWindow::onVideoListCurrentRowChanged);
+
+    connect(this, &MainWindow::videoListItemIconDownloaded, this, &MainWindow::onVideoListItemIconDownloaded);
 
     m_HttpClient = new HttpClient(this);
 }
@@ -130,32 +132,17 @@ void MainWindow::onVideoListRowInserted(const QModelIndex &parent, int first, in
     Q_UNUSED(last);
 
     auto dataItem = m_SearchResult.data.items[static_cast<size_t>(first)];
-    auto listItem = ui->listVideos->item(first);
-
-    // よくわかってないけど、QThread つかってみた
-    // アプリ終了時に必ず変なシグナル受信する
-    // （OSから Unknown signal を受信）
-
-    QThread *thread(new QThread(this));
-    thread->start();
 
     QNetworkRequest req(dataItem.thumbnailUrl);
-    auto client = new HttpClient(nullptr);
+    auto client = new HttpClient(this);
 
-    client->moveToThread(thread);
-    connect(thread, &QThread::finished, client, &HttpClient::deleteLater);
-
-    client->setReplyFinishedCallback([listItem](QNetworkReply* reply){
+    client->setReplyFinishedCallback([this, first](QNetworkReply* reply){
         if (reply->error() != QNetworkReply::NoError) {
             return;
         }
 
-        QMutexLocker lock(&g_Mutex);
-        if (listItem) {
-            auto body = reply->readAll();
-            auto icon = convertToQIcon(std::move(body));
-            listItem->setIcon(icon);
-        }
+        auto body = reply->readAll();
+        emit videoListItemIconDownloaded(first, std::move(body));
     });
 
     client->sendRequest(HttpClient::Methods::kGet, req);
@@ -165,4 +152,16 @@ void MainWindow::onVideoListRowInserted(const QModelIndex &parent, int first, in
 void MainWindow::onVideoListCurrentRowChanged(int rowIndex)
 {
     qDebug() << "current row index: " << rowIndex;
+}
+
+
+// 動画リスト行に使うアイコンのダウンロード完了時
+void MainWindow::onVideoListItemIconDownloaded(int rowIndex, QByteArray data)
+{
+    auto listItem = ui->listVideos->item(rowIndex);
+    if (!listItem) {
+        return;
+    }
+
+    listItem->setIcon(convertToQIcon(data));
 }
