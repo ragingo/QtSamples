@@ -58,13 +58,34 @@ namespace {
         return QIcon(QPixmap::fromImage(img));
     }
 
-    QMutex g_Mutex;
+    class ListItemIcomShowTask : public QRunnable
+    {
+    public:
+        ListItemIcomShowTask(QListWidgetItem *item, QByteArray data) : m_Item(item), m_Data(data) {
+            qDebug() << Q_FUNC_INFO;
+        }
+
+        void run() override {
+            if (!m_Item) {
+                return;
+            }
+            qDebug() << "tid: " << QThread::currentThreadId();
+            m_Item->setIcon(convertToQIcon(m_Data));
+        }
+
+    private:
+        QListWidgetItem *m_Item = nullptr;
+        QByteArray m_Data;
+    };
+
 }
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
+    qDebug() << Q_FUNC_INFO;
+
     ui->setupUi(this);
 
     // https://blog.qt.io/jp/2011/03/23/go-to-slot-2/
@@ -80,12 +101,16 @@ MainWindow::MainWindow(QWidget *parent) :
 
 MainWindow::~MainWindow()
 {
+    qDebug() << Q_FUNC_INFO;
+
     delete ui;
 }
 
 // 検索ボタンクリック
 void MainWindow::onSearchButtonClicked()
 {
+    qDebug() << Q_FUNC_INFO;
+
     auto keyword = ui->txtKeyword->text();
 
     QUrl url(SearchApiUrl.toString());
@@ -163,5 +188,6 @@ void MainWindow::onVideoListItemIconDownloaded(int rowIndex, QByteArray data)
         return;
     }
 
-    listItem->setIcon(convertToQIcon(data));
+    auto task = new ListItemIcomShowTask(listItem, data);
+    QThreadPool::globalInstance()->start(task);
 }
