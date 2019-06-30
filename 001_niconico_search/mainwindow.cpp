@@ -5,6 +5,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "httpclient.h"
+#include "listitemiconshowtask.h"
 
 namespace {
 
@@ -52,32 +53,6 @@ namespace {
         return result;
     }
 
-    QIcon convertToQIcon(QByteArray data) {
-        QImage img;
-        img.loadFromData(data);
-        return QIcon(QPixmap::fromImage(img));
-    }
-
-    class ListItemIcomShowTask : public QRunnable
-    {
-    public:
-        ListItemIcomShowTask(QListWidgetItem *item, QByteArray data) : m_Item(item), m_Data(data) {
-            qDebug() << Q_FUNC_INFO;
-        }
-
-        void run() override {
-            if (!m_Item) {
-                return;
-            }
-            qDebug() << "tid: " << QThread::currentThreadId();
-            m_Item->setIcon(convertToQIcon(m_Data));
-        }
-
-    private:
-        QListWidgetItem *m_Item = nullptr;
-        QByteArray m_Data;
-    };
-
 }
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -97,6 +72,7 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(this, &MainWindow::videoListItemIconDownloaded, this, &MainWindow::onVideoListItemIconDownloaded);
 
     m_HttpClient = new HttpClient(this);
+    m_ThreadPool = new QThreadPool(this);
 }
 
 MainWindow::~MainWindow()
@@ -188,6 +164,6 @@ void MainWindow::onVideoListItemIconDownloaded(int rowIndex, QByteArray data)
         return;
     }
 
-    auto task = new ListItemIcomShowTask(listItem, data);
-    QThreadPool::globalInstance()->start(task);
+    auto task = new ListItemIconShowTask(listItem, data);
+    m_ThreadPool->start(task);
 }

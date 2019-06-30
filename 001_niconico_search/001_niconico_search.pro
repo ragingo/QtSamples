@@ -31,6 +31,7 @@ SOURCES += \
 
 HEADERS += \
         httpclient.h \
+        listitemiconshowtask.h \
         mainwindow.h \
         searchresult.h
 

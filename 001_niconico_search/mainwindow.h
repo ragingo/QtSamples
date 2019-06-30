@@ -8,6 +8,7 @@ namespace Ui {
 }
 
 class HttpClient;
+class QThreadPool;
 
 class MainWindow : public QMainWindow
 {
@@ -30,4 +31,6 @@ private:
     Ui::MainWindow *ui = nullptr;
     HttpClient *m_HttpClient = nullptr;
     SearchResult m_SearchResult = {};
+    QThreadPool *m_ThreadPool = nullptr;
 };
+
